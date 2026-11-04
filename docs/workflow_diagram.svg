@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1180" viewBox="0 0 1600 1180" role="img" aria-labelledby="title description">
+  <title id="title">Lexical Relationship Lab project workflow</title>
+  <desc id="description">Two workflows: user input text preprocessing and WordNet with optional LLM comparison, and labeled benchmark evaluation with WordNet and optional LLM compared on the same rows.</desc>
+  <defs>
+    <linearGradient id="header" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#17243b"/>
+      <stop offset="1" stop-color="#4968d8"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#7183a5"/>
+    </marker>
+    <style>
+      text { font-family: "Segoe UI", Arial, sans-serif; fill: #17243b; }
+      .title { fill: #ffffff; font-size: 34px; font-weight: 700; }
+      .subtitle { fill: #e0e7ff; font-size: 17px; }
+      .lane-title { font-size: 23px; font-weight: 700; }
+      .lane-subtitle { fill: #64748b; font-size: 15px; }
+      .box-title { font-size: 18px; font-weight: 700; }
+      .box-copy { fill: #475569; font-size: 15px; }
+      .small { fill: #64748b; font-size: 14px; }
+      .pill { font-size: 13px; font-weight: 700; }
+      .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; }
+      .blue-box { fill: #f0f4ff; stroke: #9aadef; stroke-width: 2; }
+      .green-box { fill: #effaf5; stroke: #85c9a7; stroke-width: 2; }
+      .purple-box { fill: #f7f3ff; stroke: #b7a3e6; stroke-width: 2; }
+      .orange-box { fill: #fff7ed; stroke: #f3bf83; stroke-width: 2; }
+      .line { fill: none; stroke: #7183a5; stroke-width: 3; marker-end: url(#arrow); }
+      .dashed { fill: none; stroke: #8593aa; stroke-width: 2; stroke-dasharray: 8 7; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1180" fill="#f5f7fb"/>
+  <rect x="40" y="30" width="1520" height="112" rx="22" fill="url(#header)"/>
+  <text x="78" y="78" class="title">Lexical Relationship Lab</text>
+  <text x="78" y="110" class="subtitle">Project workflow | Text analysis and labeled benchmark evaluation</text>
+
+  <!-- Input-text analysis workflow -->
+  <rect x="55" y="170" width="1490" height="480" rx="22" fill="#ffffff" stroke="#dbe3f0" stroke-width="2"/>
+  <text x="85" y="215" class="lane-title">A. Analyze the user's input text</text>
+  <text x="85" y="244" class="lane-subtitle">One click processes the complete text, checks extracted content-word pairs, and optionally compares the same pairs with an LLM.</text>
+
+  <rect x="85" y="290" width="210" height="110" rx="16" class="blue-box"/>
+  <text x="105" y="327" class="box-title">1. Enter text</text>
+  <text x="105" y="356" class="box-copy">Sentence or paragraph</text>
+  <text x="105" y="380" class="box-copy">in the Streamlit app</text>
+
+  <path d="M295 345 H335" class="line"/>
+
+  <rect x="345" y="278" width="315" height="135" rx="16" class="box"/>
+  <text x="368" y="315" class="box-title">2. Preprocess (NLTK)</text>
+  <text x="368" y="345" class="box-copy">Tokenize | POS tag | Lemmatize</text>
+  <text x="368" y="370" class="box-copy">Build NP / VP / PP shallow parse</text>
+  <text x="368" y="395" class="box-copy">Calculate text-processing metrics</text>
+
+  <path d="M660 345 H700" class="line"/>
+
+  <rect x="710" y="290" width="240" height="110" rx="16" class="green-box"/>
+  <text x="732" y="327" class="box-title">3. Extract terms</text>
+  <text x="732" y="356" class="box-copy">Unique noun, verb, and</text>
+  <text x="732" y="380" class="box-copy">adjective lemmas (max 12)</text>
+
+  <path d="M950 345 H990" class="line"/>
+
+  <rect x="1000" y="290" width="230" height="110" rx="16" class="green-box"/>
+  <text x="1022" y="327" class="box-title">4. WordNet</text>
+  <text x="1022" y="356" class="box-copy">Check every unique term pair</text>
+  <text x="1022" y="380" class="box-copy">using POS from the input</text>
+
+  <path d="M1230 345 H1270" class="line"/>
+
+  <rect x="1280" y="278" width="230" height="135" rx="16" class="purple-box"/>
+  <text x="1302" y="315" class="box-title">5. Optional LLM</text>
+  <text x="1302" y="345" class="box-copy">If a key is entered, send</text>
+  <text x="1302" y="370" class="box-copy">full text + same pairs in</text>
+  <text x="1302" y="395" class="box-copy">one API request</text>
+
+  <path d="M825 400 V465 H510 V490" class="line"/>
+  <path d="M1115 400 V465 H1055 V490" class="line"/>
+  <path d="M1395 413 V465 H1055" class="dashed"/>
+  <text x="1282" y="451" class="small">No key: WordNet only</text>
+
+  <rect x="310" y="500" width="400" height="105" rx="16" class="blue-box"/>
+  <text x="335" y="537" class="box-title">Text metrics and NLP output</text>
+  <text x="335" y="567" class="box-copy">Counts, lexical diversity, POS, coverage,</text>
+  <text x="335" y="590" class="box-copy">token/lemma table, shallow parse</text>
+
+  <rect x="825" y="500" width="480" height="105" rx="16" class="purple-box"/>
+  <text x="850" y="537" class="box-title">Pair-by-pair semantic comparison</text>
+  <text x="850" y="567" class="box-copy">WordNet + LLM labels, explanations,</text>
+  <text x="850" y="590" class="box-copy">and agreement (not ground-truth accuracy)</text>
+
+  <!-- Benchmark evaluation workflow -->
+  <rect x="55" y="685" width="1490" height="445" rx="22" fill="#ffffff" stroke="#dbe3f0" stroke-width="2"/>
+  <text x="85" y="730" class="lane-title">B. Evaluate on the labeled benchmark</text>
+  <text x="85" y="759" class="lane-subtitle">A separate supervised evaluation path: both systems are scored against expected labels on the same ordered rows.</text>
+
+  <rect x="90" y="830" width="250" height="115" rx="16" class="blue-box"/>
+  <text x="115" y="868" class="box-title">1. Load benchmark</text>
+  <text x="115" y="898" class="box-copy">Word pairs + expected</text>
+  <text x="115" y="922" class="box-copy">relation labels (CSV)</text>
+
+  <path d="M340 887 H395" class="line"/>
+  <path d="M395 887 V830 H440" class="line"/>
+  <path d="M395 887 V980 H440" class="line"/>
+
+  <rect x="450" y="785" width="300" height="95" rx="16" class="green-box"/>
+  <text x="475" y="823" class="box-title">2a. WordNet baseline</text>
+  <text x="475" y="852" class="box-copy">Local prediction for each row</text>
+
+  <rect x="450" y="930" width="300" height="95" rx="16" class="purple-box"/>
+  <text x="475" y="968" class="box-title">2b. Optional LLM</text>
+  <text x="475" y="997" class="box-copy">One provider request per row</text>
+
+  <rect x="475" y="1042" width="250" height="45" rx="22" fill="#fff7ed" stroke="#f3bf83" stroke-width="1.5"/>
+  <text x="500" y="1071" class="pill" fill="#9a5b12">API key required for LLM</text>
+  <path d="M600 1025 V1040" class="dashed"/>
+
+  <path d="M750 832 H815 V887" class="line"/>
+  <path d="M750 977 H815 V887" class="line"/>
+
+  <rect x="825" y="825" width="275" height="125" rx="16" class="orange-box"/>
+  <text x="850" y="863" class="box-title">3. Score predictions</text>
+  <text x="850" y="893" class="box-copy">Accuracy, precision, recall,</text>
+  <text x="850" y="918" class="box-copy">F1 and macro-F1</text>
+
+  <path d="M1100 887 H1140" class="line"/>
+
+  <rect x="1150" y="805" width="335" height="165" rx="16" class="blue-box"/>
+  <text x="1175" y="843" class="box-title">4. Compare both systems</text>
+  <text x="1175" y="873" class="box-copy">Only when both results cover</text>
+  <text x="1175" y="898" class="box-copy">the same ordered benchmark rows</text>
+  <text x="1175" y="933" class="small">Agreement | per-class metrics | errors</text>
+  <text x="1175" y="955" class="small">confusion matrices | conclusions</text>
+
+  <rect x="825" y="1000" width="660" height="75" rx="14" fill="#f8fafc" stroke="#dbe3f0" stroke-width="1.5"/>
+  <text x="850" y="1032" class="box-copy">Benchmark scores are supervised metrics; conclusions apply only to this small</text>
+  <text x="850" y="1057" class="box-copy">teaching dataset and do not establish general model performance.</text>
+
+  <text x="85" y="1110" class="small">WordNet is a lexical database with a rule-based analyzer, not a model trained by this project.</text>
+</svg>
