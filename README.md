@@ -101,7 +101,7 @@ the app.
 ## Run
 
 ```powershell
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 The WordNet analysis works without an LLM key. **Gemini is selected by

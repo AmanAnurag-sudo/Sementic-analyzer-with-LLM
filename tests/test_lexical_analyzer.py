@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from evaluation import calculate_metrics, compare_classifiers
 from lexical_analyzer import (
@@ -119,6 +119,217 @@ class LexicalAnalyzerTests(unittest.TestCase):
         self.assertIn("VP", result.parse_tree)
         tokenize.assert_called_once_with("The quick foxes jump quickly.")
         tag.assert_called_once_with(["The", "quick", "foxes", "jump", "quickly", "."])
+        _lemmatize.assert_has_calls(
+            [
+                call("quick", "a"),
+                call("foxes", "n"),
+                call("jump", "v"),
+                call("quickly", "r"),
+            ],
+            any_order=True,
+        )
+
+    def test_preprocess_text_uses_penn_pos_for_sentence_lemmas(self):
+        sentences = {
+            "The dogs are running.": (
+                ["The", "dogs", "are", "running", "."],
+                [
+                    ("The", "DT"),
+                    ("dogs", "NNS"),
+                    ("are", "VBP"),
+                    ("running", "VBG"),
+                    (".", "."),
+                ],
+            ),
+            "I enjoy running.": (
+                ["I", "enjoy", "running", "."],
+                [
+                    ("I", "PRP"),
+                    ("enjoy", "VBP"),
+                    ("running", "NN"),
+                    (".", "."),
+                ],
+            ),
+            "She studies every day.": (
+                ["She", "studies", "every", "day", "."],
+                [
+                    ("She", "PRP"),
+                    ("studies", "NNS"),
+                    ("every", "DT"),
+                    ("day", "NN"),
+                    (".", "."),
+                ],
+            ),
+            "The cars are fast.": (
+                ["The", "cars", "are", "fast", "."],
+                [
+                    ("The", "DT"),
+                    ("cars", "NNS"),
+                    ("are", "VBP"),
+                    ("fast", "RB"),
+                    (".", "."),
+                ],
+            ),
+            "Dogs chase cats.": (
+                ["Dogs", "chase", "cats", "."],
+                [
+                    ("Dogs", "NNS"),
+                    ("chase", "JJ"),
+                    ("cats", "NNS"),
+                    (".", "."),
+                ],
+            ),
+            "The better solution works.": (
+                ["The", "better", "solution", "works", "."],
+                [
+                    ("The", "DT"),
+                    ("better", "JJR"),
+                    ("solution", "NN"),
+                    ("works", "VBZ"),
+                    (".", "."),
+                ],
+            ),
+        }
+        lemmas = {
+            ("dogs", "n"): "dog",
+            ("running", "v"): "run",
+            ("studies", "v"): "study",
+            ("cars", "n"): "car",
+            ("cats", "n"): "cat",
+            ("are", "v"): "be",
+            ("chase", "v"): "chase",
+            ("better", "a"): "good",
+            ("works", "v"): "work",
+        }
+        tagged_by_tokens = {
+            tuple(tokens): tags for tokens, tags in sentences.values()
+        }
+        with (
+            patch(
+                "lexical_analyzer.nltk.word_tokenize",
+                side_effect=lambda text: sentences[text][0],
+            ),
+            patch(
+                "lexical_analyzer.nltk.pos_tag",
+                side_effect=lambda tokens: tagged_by_tokens[tuple(tokens)],
+            ),
+            patch(
+                "lexical_analyzer.wn.synsets",
+                side_effect=lambda word, pos: (
+                    [object()]
+                    if (word, pos) in {
+                        ("fast", "a"),
+                        ("chase", "v"),
+                        ("studies", "v"),
+                    }
+                    else []
+                ),
+            ),
+            patch(
+                "lexical_analyzer._LEMMATIZER.lemmatize",
+                side_effect=lambda word, pos: lemmas.get((word, pos), word),
+            ) as lemmatize,
+        ):
+            results = {text: preprocess_text(text) for text in sentences}
+
+        expected = {
+            "The dogs are running.": ("dogs", "NNS", "dog"),
+            "I enjoy running.": ("running", "NN", "running"),
+            "She studies every day.": ("studies", "VBZ", "study"),
+            "The cars are fast.": ("cars", "NNS", "car"),
+            "The better solution works.": ("better", "JJR", "good"),
+            "Dogs chase cats.": ("chase", "VBP", "chase"),
+        }
+        for text, (word, pos, lemma) in expected.items():
+            token = next(token for token in results[text].tokens if token.token == word)
+            self.assertEqual((token.token, token.pos, token.lemma), (word, pos, lemma))
+
+        are = next(
+            token for token in results["The cars are fast."].tokens
+            if token.token == "are"
+        )
+        fast = next(
+            token for token in results["The cars are fast."].tokens
+            if token.token == "fast"
+        )
+        self.assertEqual((are.pos, are.lemma), ("VBP", "be"))
+        self.assertEqual((fast.pos, fast.lemma), ("JJ", "fast"))
+
+        lemmatize.assert_has_calls(
+            [
+                call("dogs", "n"),
+                call("running", "v"),
+                call("running", "n"),
+                call("studies", "v"),
+                call("cars", "n"),
+                call("fast", "a"),
+                call("cats", "n"),
+                call("chase", "v"),
+                call("better", "a"),
+                call("works", "v"),
+            ],
+            any_order=True,
+        )
+        self.assertNotIn(call(".", "n"), lemmatize.call_args_list)
+
+        with patch("lexical_analyzer._analyze_preprocessed_terms") as analyze:
+            analyze.return_value = WordNetAnalysis(
+                left=PreprocessedTerm("cars", "car", "NNS"),
+                right=PreprocessedTerm("fast", "fast", "JJ"),
+                relations=("unrelated",),
+                evidence=(),
+                left_senses=(),
+                right_senses=(),
+            )
+            relation_results = {
+                text: analyze_text_with_wordnet(results[text])
+                for text in (
+                    "The cars are fast.",
+                    "Dogs chase cats.",
+                    "She studies every day.",
+                )
+            }
+
+        self.assertEqual(
+            relation_results["The cars are fast."].terms, ("car", "fast")
+        )
+        self.assertEqual(
+            relation_results["Dogs chase cats."].terms,
+            ("dog", "chase", "cat"),
+        )
+        self.assertEqual(
+            relation_results["She studies every day."].terms,
+            ("study", "day"),
+        )
+        self.assertEqual(
+            analyze.call_args_list[0],
+            call(
+                PreprocessedTerm("cars", "car", "NNS"),
+                PreprocessedTerm("fast", "fast", "JJ"),
+            ),
+        )
+
+    @patch("lexical_analyzer._LEMMATIZER.lemmatize")
+    @patch(
+        "lexical_analyzer.nltk.pos_tag",
+        return_value=[("mystery", "FW"), (".", ".")],
+    )
+    @patch(
+        "lexical_analyzer.nltk.word_tokenize",
+        return_value=["mystery", "."],
+    )
+    def test_preprocess_text_does_not_assign_unknown_tags_or_punctuation_a_pos(
+        self, _tokenize, _tag, lemmatize
+    ):
+        result = preprocess_text("mystery.")
+
+        self.assertEqual(
+            [(token.token, token.pos, token.lemma) for token in result.tokens],
+            [("mystery", "FW", "mystery"), (".", ".", ".")],
+        )
+        _tokenize.assert_called_once_with("mystery.")
+        _tag.assert_called_once_with(["mystery", "."])
+        lemmatize.assert_not_called()
 
     def test_preprocess_text_rejects_empty_input(self):
         with self.assertRaisesRegex(ValueError, "Enter text"):
@@ -151,7 +362,38 @@ class LexicalAnalyzerTests(unittest.TestCase):
         self.assertEqual(metrics.chunk_count, 2)
         self.assertAlmostEqual(metrics.chunk_coverage, 1.0)
 
-    @patch("lexical_analyzer.analyze_with_wordnet")
+    @patch("lexical_analyzer.wn.synsets", return_value=[])
+    def test_pos_distribution_separates_determiners_and_punctuation(self, _synsets):
+        analysis = TextAnalysis(
+            tokens=(
+                PreprocessedToken("The", "DT", "the"),
+                PreprocessedToken("cars", "NNS", "car"),
+                PreprocessedToken("are", "VBP", "be"),
+                PreprocessedToken("fast", "JJ", "fast"),
+                PreprocessedToken(".", ".", "."),
+            ),
+            parse_tree="(S)",
+            chunk_count=0,
+            chunked_word_count=0,
+        )
+
+        metrics = evaluate_text_analysis(analysis)
+
+        self.assertEqual(
+            dict(metrics.pos_distribution),
+            {
+                "Noun": 1,
+                "Verb": 1,
+                "Adjective": 1,
+                "Adverb": 0,
+                "Determiner": 1,
+                "Punctuation": 1,
+                "Other": 0,
+            },
+        )
+        self.assertEqual(sum(count for _, count in metrics.pos_distribution), len(analysis.tokens))
+
+    @patch("lexical_analyzer._analyze_preprocessed_terms")
     def test_text_wordnet_analysis_checks_all_unique_content_word_pairs(self, analyze):
         analyze.return_value = WordNetAnalysis(
             left=PreprocessedTerm("dog", "dog", "NN"),
@@ -184,7 +426,7 @@ class LexicalAnalyzerTests(unittest.TestCase):
             [("dog", "loyal"), ("dog", "animal"), ("loyal", "animal")],
         )
         self.assertTrue(all(pair.wordnet_relations == ("hypernym",) for pair in result.pairs))
-    @patch("lexical_analyzer.analyze_with_wordnet")
+    @patch("lexical_analyzer._analyze_preprocessed_terms")
     def test_text_wordnet_analysis_uses_input_pos_for_each_pair(self, analyze):
         analyze.return_value = WordNetAnalysis(
             left=PreprocessedTerm("complex", "complex", "JJ"),
@@ -204,11 +446,14 @@ class LexicalAnalyzerTests(unittest.TestCase):
             chunked_word_count=2,
         )
 
-        analyze_text_with_wordnet(analysis)
+        with patch("lexical_analyzer.preprocess_term") as preprocess:
+            analyze_text_with_wordnet(analysis)
 
         analyze.assert_called_once_with(
-            "complex", "concept", left_pos="JJ", right_pos="NN"
+            PreprocessedTerm("complex", "complex", "JJ"),
+            PreprocessedTerm("concept", "concept", "NN"),
         )
+        preprocess.assert_not_called()
 
     def test_text_wordnet_analysis_rejects_too_many_terms(self):
         analysis = TextAnalysis(
@@ -259,6 +504,9 @@ class LexicalAnalyzerTests(unittest.TestCase):
 
         self.assertIn("hypernym", result.relations)
         self.assertEqual(result.primary_relation, "hypernym")
+        synsets.assert_has_calls(
+            [call("dog", pos="n"), call("animal", pos="n")]
+        )
 
     def test_metrics_compute_accuracy_and_macro_f1(self):
         metrics = calculate_metrics(

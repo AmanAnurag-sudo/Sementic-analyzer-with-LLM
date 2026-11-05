@@ -45,6 +45,56 @@ _RELATION_METHODS = {
 _LEMMATIZER = WordNetLemmatizer()
 
 
+def _wordnet_pos_for_tag(tag: str) -> str | None:
+    """Convert a Penn Treebank tag prefix to WordNet POS, if supported."""
+    return _WORDNET_POS.get(tag[:1])
+
+
+def _correct_contextual_pos_tags(
+    tagged_tokens: list[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    """Correct a few common NLTK tagger ambiguities using local grammar context."""
+    corrected = list(tagged_tokens)
+    third_person_pronouns = {"he", "she", "it"}
+    forms_of_be = {"am", "is", "are", "was", "were", "be", "been", "being"}
+
+    for index, (token, tag) in enumerate(tagged_tokens):
+        word = token.lower()
+        previous_word = (
+            tagged_tokens[index - 1][0].lower() if index > 0 else ""
+        )
+        previous_tag = tagged_tokens[index - 1][1] if index > 0 else ""
+        next_tag = (
+            tagged_tokens[index + 1][1]
+            if index + 1 < len(tagged_tokens)
+            else ""
+        )
+
+        if (
+            previous_word in forms_of_be
+            and tag.startswith("R")
+            and wn.synsets(word, pos=wn.ADJ)
+        ):
+            corrected[index] = (token, "JJ")
+        elif (
+            tag.startswith("J")
+            and previous_tag.startswith("N")
+            and next_tag.startswith("N")
+            and wn.synsets(word, pos=wn.VERB)
+        ):
+            corrected[index] = (token, "VBP")
+        elif (
+            tag.startswith("N")
+            and previous_word in third_person_pronouns
+            and previous_tag == "PRP"
+            and word.endswith("s")
+            and wn.synsets(word, pos=wn.VERB)
+        ):
+            corrected[index] = (token, "VBZ")
+
+    return corrected
+
+
 @dataclass(frozen=True)
 class PreprocessedTerm:
     original: str
@@ -149,11 +199,22 @@ def preprocess_text(text: str) -> TextAnalysis:
             "The NLTK POS-tagger data is missing. Run `python download_nltk_data.py`."
         ) from error
 
+    try:
+        tagged_tokens = _correct_contextual_pos_tags(tagged_tokens)
+    except LookupError as error:
+        raise RuntimeError(
+            "The NLTK WordNet data is missing. Run `python download_nltk_data.py`."
+        ) from error
+
     processed_tokens: list[PreprocessedToken] = []
     for token, tag in tagged_tokens:
-        wordnet_pos = _WORDNET_POS.get(tag[:1], wn.NOUN)
+        wordnet_pos = _wordnet_pos_for_tag(tag)
         try:
-            lemma = _LEMMATIZER.lemmatize(token.lower(), wordnet_pos)
+            lemma = (
+                _LEMMATIZER.lemmatize(token.lower(), wordnet_pos)
+                if wordnet_pos is not None
+                else token.lower()
+            )
         except LookupError as error:
             raise RuntimeError(
                 "The NLTK WordNet data is missing. Run `python download_nltk_data.py`."
@@ -192,9 +253,9 @@ def evaluate_text_analysis(analysis: TextAnalysis) -> TextMetrics:
         token for token in words if token.pos[:1] in {"N", "V", "J"}
     ]
     content_terms = {
-        (token.lemma, _WORDNET_POS[token.pos[0]])
+        (token.lemma, wordnet_pos)
         for token in content_tokens
-        if token.pos[0] in _WORDNET_POS
+        if (wordnet_pos := _wordnet_pos_for_tag(token.pos)) is not None
     }
 
     covered_terms = 0
@@ -213,16 +274,23 @@ def evaluate_text_analysis(analysis: TextAnalysis) -> TextMetrics:
             "Verb": 0,
             "Adjective": 0,
             "Adverb": 0,
+            "Determiner": 0,
+            "Punctuation": 0,
             "Other": 0,
         }
     )
     for token in analysis.tokens:
-        category = {
-            "N": "Noun",
-            "V": "Verb",
-            "J": "Adjective",
-            "R": "Adverb",
-        }.get(token.pos[:1], "Other")
+        if not any(character.isalnum() for character in token.token):
+            category = "Punctuation"
+        elif token.pos.startswith("D"):
+            category = "Determiner"
+        else:
+            category = {
+                wn.NOUN: "Noun",
+                wn.VERB: "Verb",
+                wn.ADJ: "Adjective",
+                wn.ADV: "Adverb",
+            }.get(_wordnet_pos_for_tag(token.pos), "Other")
         pos_categories[category] += 1
 
     word_count = len(words)
@@ -253,15 +321,22 @@ def evaluate_text_analysis(analysis: TextAnalysis) -> TextMetrics:
 
 def analyze_text_with_wordnet(analysis: TextAnalysis) -> TextRelationAnalysis:
     """Find WordNet relations among content-word lemmas in one input text."""
-    term_pos: dict[str, str] = {}
+    preprocessed_terms: dict[str, PreprocessedTerm] = {}
     for token in analysis.tokens:
         if (
             token.token.isalpha()
             and token.pos[:1] in {"N", "V", "J"}
             and token.lemma not in {"be", "do"}
         ):
-            term_pos.setdefault(token.lemma, token.pos)
-    terms = tuple(term_pos)
+            preprocessed_terms.setdefault(
+                token.lemma,
+                PreprocessedTerm(
+                    original=token.token,
+                    lemma=token.lemma,
+                    pos=token.pos,
+                ),
+            )
+    terms = tuple(preprocessed_terms)
     if len(terms) < 2:
         raise ValueError(
             "Enter text containing at least two distinct nouns, verbs, or adjectives "
@@ -279,11 +354,9 @@ def analyze_text_with_wordnet(analysis: TextAnalysis) -> TextRelationAnalysis:
             left=left,
             right=right,
             wordnet_relations=(
-                result := analyze_with_wordnet(
-                    left,
-                    right,
-                    left_pos=term_pos[left],
-                    right_pos=term_pos[right],
+                result := _analyze_preprocessed_terms(
+                    preprocessed_terms[left],
+                    preprocessed_terms[right],
                 )
             ).relations,
             evidence=result.evidence,
@@ -314,9 +387,13 @@ def preprocess_term(text: str) -> PreprocessedTerm:
         ) from error
 
     tag = tagged_tokens[0][1]
-    wordnet_pos = _WORDNET_POS.get(tag[:1], wn.NOUN)
+    wordnet_pos = _wordnet_pos_for_tag(tag)
     try:
-        lemma = _LEMMATIZER.lemmatize(token, wordnet_pos)
+        lemma = (
+            _LEMMATIZER.lemmatize(token, wordnet_pos)
+            if wordnet_pos is not None
+            else token
+        )
         surface_synsets = wn.synsets(token)
     except LookupError as error:
         raise RuntimeError(
@@ -349,8 +426,28 @@ def analyze_with_wordnet(
     """Find direct WordNet relations, oriented from the left term to the right."""
     left = preprocess_term(left_text)
     right = preprocess_term(right_text)
-    left_wordnet_pos = _WORDNET_POS.get(left_pos[:1]) if left_pos else None
-    right_wordnet_pos = _WORDNET_POS.get(right_pos[:1]) if right_pos else None
+    return _analyze_preprocessed_terms(
+        left,
+        right,
+        left_pos=left_pos,
+        right_pos=right_pos,
+    )
+
+
+def _analyze_preprocessed_terms(
+    left: PreprocessedTerm,
+    right: PreprocessedTerm,
+    *,
+    left_pos: str | None = None,
+    right_pos: str | None = None,
+) -> WordNetAnalysis:
+    """Analyze terms that already have sentence-level POS and lemmas."""
+    left_wordnet_pos = _wordnet_pos_for_tag(
+        left.pos if left_pos is None else left_pos
+    )
+    right_wordnet_pos = _wordnet_pos_for_tag(
+        right.pos if right_pos is None else right_pos
+    )
     try:
         left_synsets = wn.synsets(left.lemma, pos=left_wordnet_pos)
         right_synsets = wn.synsets(right.lemma, pos=right_wordnet_pos)
